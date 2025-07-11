@@ -1,11 +1,43 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
+
+func chirpValidater(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	type bodyStructs struct {
+		Body string `json:"body"`
+	}
+	var params bodyStructs
+	err := json.NewDecoder(r.Body).Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Something went wrong!"})
+		return
+	}
+	if len(params.Body) > 140 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Chirp is too long!"})
+		return
+	}
+	// kerfuffle
+	// sharbert
+	// fornax
+	w.WriteHeader(200)
+	params.Body = strings.ReplaceAll(params.Body, "kerfuffle","****")
+	params.Body = strings.ReplaceAll(params.Body, "sharbet","****")
+	params.Body = strings.ReplaceAll(params.Body, "fornax","****")
+	json.NewEncoder(w).Encode(map[string]string{"cleaned_body": params.Body})
+
+}
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
@@ -24,7 +56,6 @@ func (cfg *apiConfig) showHits(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(result))
 }
 
-
 func appAssetshandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`<pre><a href="logo.png">logo.png</a>Expecting body to contain: </pre>`))
@@ -36,26 +67,24 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-
-
 func (cfg *apiConfig) showDetailedHits(w http.ResponseWriter, r *http.Request) {
 	x := cfg.fileserverHits.Load()
-	w.Header().Set("Content-type","text/html;charset=utf-8")
-	fmt.Fprintf(w,`
+	w.Header().Set("Content-type", "text/html;charset=utf-8")
+	fmt.Fprintf(w, `
 		<html>
 			<body>
 				<h1>Welcome, Chirpy Admin</h1>
 				<p>Chirpy has been visited %d times!</p>
 			</body>
 		</html>
-	`,x)
-	
+	`, x)
+
 }
 
-func (cfg *apiConfig) resetHits(w http.ResponseWriter, r *http.Request){
+func (cfg *apiConfig) resetHits(w http.ResponseWriter, r *http.Request) {
 	cfg.fileserverHits.Store(0)
-	w.Header().Set("Content-type","text/plain;charset=utf-8")
-	fmt.Fprint(w,"Hit counter has been reset to 0")
+	w.Header().Set("Content-type", "text/plain;charset=utf-8")
+	fmt.Fprint(w, "Hit counter has been reset to 0")
 }
 
 func main() {
@@ -72,7 +101,8 @@ func main() {
 	mux.HandleFunc("GET /api/assets", appAssetshandler)
 	mux.HandleFunc("GET /api/metrics", apiCfg.showHits)
 	mux.HandleFunc("/admin/metrics", apiCfg.showDetailedHits)
-	mux.HandleFunc("/admin/reset",apiCfg.resetHits)
+	mux.HandleFunc("/admin/reset", apiCfg.resetHits)
+	mux.HandleFunc("/api/validate_chirp", chirpValidater)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
