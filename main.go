@@ -7,20 +7,20 @@ import (
 	"sync/atomic"
 )
 
-type apiConfig struct{
+type apiConfig struct {
 	fileserverHits atomic.Int32
 }
 
-func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler{
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){
+func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg.fileserverHits.Add(1)
-		next.ServeHTTP(w,r)
+		next.ServeHTTP(w, r)
 	})
 }
 
-func (cfg *apiConfig) showHits(w http.ResponseWriter,r *http.Request){
-	x:= cfg.fileserverHits.Load()
-	result := fmt.Sprintf("Hits: %v",x)
+func (cfg *apiConfig) showHits(w http.ResponseWriter, r *http.Request) {
+	x := cfg.fileserverHits.Load()
+	result := fmt.Sprintf("Hits: %v", x)
 	w.Write([]byte(result))
 }
 
@@ -37,10 +37,24 @@ func appAssetshandler(w http.ResponseWriter, r *http.Request) {
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK")) 
+	w.Write([]byte("OK"))
 }
 
 
+
+func (cfg *apiConfig) showDetailedHits(w http.ResponseWriter, r *http.Request) {
+	x := cfg.fileserverHits.Load()
+	w.Header().Set("Content-type","text/html;charset=utf-8")
+	fmt.Fprintf(w,`
+		<html>
+			<body>
+				<h1>Welcome, Chirpy Admin</h1>
+				<p>Chirpy has been visited %d times!</p>
+			</body>
+		</html>
+	`,x)
+	
+}
 
 func main() {
 	const filepathRoot = "."
@@ -53,7 +67,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
+	mux.HandleFunc("GET /api/assets", appAssetshandler)
 	mux.HandleFunc("GET /api/metrics", apiCfg.showHits)
+	mux.HandleFunc("/admin/metrics", apiCfg.showDetailedHits)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
