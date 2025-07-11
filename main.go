@@ -24,10 +24,6 @@ func (cfg *apiConfig) showHits(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(result))
 }
 
-func apphandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("<html> Welcome to Chirpy</html>"))
-}
 
 func appAssetshandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -56,6 +52,12 @@ func (cfg *apiConfig) showDetailedHits(w http.ResponseWriter, r *http.Request) {
 	
 }
 
+func (cfg *apiConfig) resetHits(w http.ResponseWriter, r *http.Request){
+	cfg.fileserverHits.Store(0)
+	w.Header().Set("Content-type","text/plain;charset=utf-8")
+	fmt.Fprint(w,"Hit counter has been reset to 0")
+}
+
 func main() {
 	const filepathRoot = "."
 	const port = "8080"
@@ -70,6 +72,7 @@ func main() {
 	mux.HandleFunc("GET /api/assets", appAssetshandler)
 	mux.HandleFunc("GET /api/metrics", apiCfg.showHits)
 	mux.HandleFunc("/admin/metrics", apiCfg.showDetailedHits)
+	mux.HandleFunc("/admin/reset",apiCfg.resetHits)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
