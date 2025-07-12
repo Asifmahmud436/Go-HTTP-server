@@ -1,13 +1,20 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/Asifmahmud436/Go-HTTP-server/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
+
 
 func chirpValidater(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -41,6 +48,7 @@ func chirpValidater(w http.ResponseWriter, r *http.Request) {
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	DB *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -88,11 +96,20 @@ func (cfg *apiConfig) resetHits(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// opening the db
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres",dbURL)
+	if(err!=nil){
+		log.Fatal("Something wrong with the Database connection")
+	}
+	dbQueries := database.New(db)
 	const filepathRoot = "."
 	const port = "8080"
 
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
+		DB: dbQueries,
 	}
 
 	mux := http.NewServeMux()
