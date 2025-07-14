@@ -9,12 +9,13 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/Asifmahmud436/Go-HTTP-server/internal/database"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
-
 
 func chirpValidater(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -39,16 +40,16 @@ func chirpValidater(w http.ResponseWriter, r *http.Request) {
 	// sharbert
 	// fornax
 	w.WriteHeader(200)
-	params.Body = strings.ReplaceAll(params.Body, "kerfuffle","****")
-	params.Body = strings.ReplaceAll(params.Body, "sharbet","****")
-	params.Body = strings.ReplaceAll(params.Body, "fornax","****")
+	params.Body = strings.ReplaceAll(params.Body, "kerfuffle", "****")
+	params.Body = strings.ReplaceAll(params.Body, "sharbet", "****")
+	params.Body = strings.ReplaceAll(params.Body, "fornax", "****")
 	json.NewEncoder(w).Encode(map[string]string{"cleaned_body": params.Body})
 
 }
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
-	DB *database.Queries
+	DB             *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -95,12 +96,49 @@ func (cfg *apiConfig) resetHits(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Hit counter has been reset to 0")
 }
 
+func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	type UserEmail struct {
+		Email string `json:"email"`
+	}
+	var params UserEmail
+	err := json.NewDecoder(r.Body).Decode(&params)
+	if err != nil || params.Email == "" {
+		log.Printf("Error validating email: %s", err)
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	dbUser, err := cfg.DB.CreateUser(r.Context(), params.Email)
+	if err != nil {
+		log.Printf("Couldnt create user: %s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"Error": "Couldnt create user"})
+		return
+	}
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+	user := User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(user)
+
+}
+
 func main() {
 	// opening the db
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
-	db, err := sql.Open("postgres",dbURL)
-	if(err!=nil){
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
 		log.Fatal("Something wrong with the Database connection")
 	}
 	dbQueries := database.New(db)
@@ -109,7 +147,7 @@ func main() {
 
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
-		DB: dbQueries,
+		DB:             dbQueries,
 	}
 
 	mux := http.NewServeMux()
@@ -120,6 +158,7 @@ func main() {
 	mux.HandleFunc("/admin/metrics", apiCfg.showDetailedHits)
 	mux.HandleFunc("/admin/reset", apiCfg.resetHits)
 	mux.HandleFunc("/api/validate_chirp", chirpValidater)
+	mux.HandleFunc("POST /api/users", apiCfg.handleUser)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
