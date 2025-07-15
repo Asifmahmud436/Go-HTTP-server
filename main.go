@@ -205,6 +205,41 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request){
 	json.NewEncoder(w).Encode(chirps)
 }
 
+func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request){
+	w.Header().Set("Content-type","application/json")
+	id := r.PathValue("chirpID")
+	idStr,err := uuid.Parse(id)
+	if(err!=nil){
+		log.Println("Invalid UUID")
+		w.WriteHeader(404)
+		json.NewEncoder(w).Encode(map[string]string{"error":"Invalid UUID :D"})
+		return
+	}
+	dbChirp, err := cfg.DB.GetChirpByID(r.Context(),idStr)
+	if(err!=nil || id==""){
+		log.Fatal("Id not found in Database")
+		w.WriteHeader(404)
+		json.NewEncoder(w).Encode(map[string]string{"error":"Id not found :D"})
+		return
+	}
+	type Chirp struct{
+		Id uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body string `json:"body"`
+		UserId uuid.UUID `json:"user_id"`
+	}
+	chirp := Chirp{
+		Id: dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body: dbChirp.Body,
+		UserId: dbChirp.UserID,
+	}
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(map[string]Chirp{"Chirp":chirp})
+}
+
 func main() {
 	// opening the db
 	godotenv.Load()
@@ -212,6 +247,7 @@ func main() {
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal("Something wrong with the Database connection")
+		return
 	}
 	dbQueries := database.New(db)
 	const filepathRoot = "."
@@ -233,6 +269,7 @@ func main() {
 	mux.HandleFunc("POST /api/users", apiCfg.handleUser)
 	mux.HandleFunc("POST /api/chirps", apiCfg.postChiprs)
 	mux.HandleFunc("GET /api/chirps",apiCfg.getChirps)
+	mux.HandleFunc("GET /api/chirps/{chirpID}",apiCfg.getChirpById)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
