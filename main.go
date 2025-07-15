@@ -133,7 +133,7 @@ func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (cfg *apiConfig) handleChiprs(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) postChiprs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-type", "application/json")
 	type Input struct {
 		Body   string    `json:"body"`
@@ -175,6 +175,36 @@ func (cfg *apiConfig) handleChiprs(w http.ResponseWriter, r *http.Request) {
 	
 }
 
+func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request){
+	w.Header().Set("Content-type","application/json")
+	dbChirps, err := cfg.DB.ListChirps(r.Context())
+	if(err!=nil){
+		log.Printf("Couldnt get the chirps! : %s",err)
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error":"Error while getting all the chirps :D"})
+		return
+	}
+	type Chirp struct{
+		Id uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body string `json:"body"`
+		UserId uuid.UUID `json:"user_id"`
+	}
+	chirps := make([]Chirp,len(dbChirps))
+	for i, ch:= range dbChirps{
+		chirps[i] = Chirp{
+			Id: ch.ID,
+			CreatedAt: ch.CreatedAt,
+			UpdatedAt: ch.UpdatedAt,
+			Body: ch.Body,
+			UserId: ch.UserID,
+		}
+	}
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(chirps)
+}
+
 func main() {
 	// opening the db
 	godotenv.Load()
@@ -201,7 +231,8 @@ func main() {
 	mux.HandleFunc("/admin/reset", apiCfg.resetHits)
 	mux.HandleFunc("/api/validate_chirp", chirpValidater)
 	mux.HandleFunc("POST /api/users", apiCfg.handleUser)
-	mux.HandleFunc("POST /api/chirps", apiCfg.handleChiprs)
+	mux.HandleFunc("POST /api/chirps", apiCfg.postChiprs)
+	mux.HandleFunc("GET /api/chirps",apiCfg.getChirps)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
