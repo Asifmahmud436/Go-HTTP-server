@@ -133,6 +133,48 @@ func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (cfg *apiConfig) handleChiprs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-type", "application/json")
+	type Input struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+	var params Input
+	err := json.NewDecoder(r.Body).Decode(&params)
+	if err != nil {
+		log.Printf("Error in input: %s",err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	dbChirp,err := cfg.DB.CreateChirp(r.Context(),database.CreateChirpParams{
+		Body: params.Body,
+		UserID: params.UserID,
+	})
+	if err!= nil{
+		log.Printf("Error in creating user: %s",err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error":"Couldnt create a chirp"})
+		return
+	}
+	type Chirp struct{
+		Id uuid.UUID `json:"id"`
+		CreatedAT time.Time `json:"created_at"`
+		UpdatedAT time.Time `json:"updated_at"`
+		Body string `json:"body"`
+		UserId uuid.UUID `json:"user_id"`
+	}
+	chirp := Chirp{
+		Id: dbChirp.ID,
+		CreatedAT: dbChirp.CreatedAt,
+		UpdatedAT: dbChirp.UpdatedAt,
+		Body: dbChirp.Body,
+		UserId: dbChirp.UserID,
+	}
+	w.WriteHeader(201)
+	json.NewEncoder(w).Encode(chirp)
+	
+}
+
 func main() {
 	// opening the db
 	godotenv.Load()
@@ -159,6 +201,7 @@ func main() {
 	mux.HandleFunc("/admin/reset", apiCfg.resetHits)
 	mux.HandleFunc("/api/validate_chirp", chirpValidater)
 	mux.HandleFunc("POST /api/users", apiCfg.handleUser)
+	mux.HandleFunc("POST /api/chirps", apiCfg.handleChiprs)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
