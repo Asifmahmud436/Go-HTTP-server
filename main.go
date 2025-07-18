@@ -36,9 +36,7 @@ func chirpValidater(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "Chirp is too long!"})
 		return
 	}
-	// kerfuffle
-	// sharbert
-	// fornax
+	
 	w.WriteHeader(200)
 	params.Body = strings.ReplaceAll(params.Body, "kerfuffle", "****")
 	params.Body = strings.ReplaceAll(params.Body, "sharbet", "****")
