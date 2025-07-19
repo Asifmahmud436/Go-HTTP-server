@@ -4,17 +4,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/Asifmahmud436/Go-HTTP-server/internal/database"
-	"github.com/Asifmahmud436/Go-HTTP-server/internal/auth"
-	"github.com/google/uuid"
-	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
+	"go/token"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Asifmahmud436/Go-HTTP-server/internal/auth"
+	"github.com/Asifmahmud436/Go-HTTP-server/internal/database"
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func chirpValidater(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +50,7 @@ func chirpValidater(w http.ResponseWriter, r *http.Request) {
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
+	Secret 			string
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -142,12 +145,25 @@ func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) postChiprs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-type", "application/json")
+	token,err := auth.GetBearerToken(r.Header)
+	if err!=nil{
+		log.Printf("Error in getting the jwt token: %s",err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	userId, err := auth.ValidateJWT(token,cfg.Secret)
+	if err!=nil{
+		log.Printf("The token is not valid: %s",err)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 	type Input struct {
 		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		
 	}
 	var params Input
-	err := json.NewDecoder(r.Body).Decode(&params)
+	err = json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
 		log.Printf("Error in input: %s", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -155,7 +171,7 @@ func (cfg *apiConfig) postChiprs(w http.ResponseWriter, r *http.Request) {
 	}
 	dbChirp, err := cfg.DB.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   params.Body,
-		UserID: params.UserID,
+		UserID: userId,
 	})
 	if err != nil {
 		log.Printf("Error in creating user: %s", err)
@@ -177,7 +193,7 @@ func (cfg *apiConfig) postChiprs(w http.ResponseWriter, r *http.Request) {
 		Body:      dbChirp.Body,
 		UserId:    dbChirp.UserID,
 	}
-	w.WriteHeader(201)
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(chirp)
 
 }
@@ -253,8 +269,14 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, r *http.Request) {
 	type Login struct {
 		Password string `json:"password"`
 		Email    string `json:"email"`
+		ExpiresInSecond int `json:"expires_in_seconds"`
 	}
-	var params Login
+	newLogin := func() Login{
+		return Login{
+			ExpiresInSecond: 3600,
+		}
+	}
+	params := newLogin()
 	err := json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
 		log.Printf("Invalid login format: %s", err)
@@ -277,17 +299,25 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token,err := auth.MakeJWT(dbUser.ID,cfg.Secret,time.Duration(params.ExpiresInSecond)*time.Second)
+	if err!=nil{
+		json.NewEncoder(w).Encode(map[string]string{"error":"could not generate new token"})
+		return
+	}
+
 	type User struct {
 		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email     string    `json:"email"`
+		Token     string    `json:"token"`
 	}
 	user := User{
 		ID:        dbUser.ID,
 		CreatedAt: dbUser.CreatedAt,
 		UpdatedAt: dbUser.UpdatedAt,
 		Email:     dbUser.Email,
+		Token: token,
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
@@ -310,8 +340,9 @@ func main() {
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		DB:             dbQueries,
+		Secret: os.Getenv("SECRET"),
 	}
-
+	
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
