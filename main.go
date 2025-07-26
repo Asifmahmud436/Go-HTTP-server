@@ -350,6 +350,23 @@ func (cfg *apiConfig) handleRefreshToken(w http.ResponseWriter,r *http.Request){
 	w.WriteHeader(200)
 }
 
+func (cfg *apiConfig) handleRevokeToken(w http.ResponseWriter, r *http.Request){
+	token, err := auth.GetBearerToken(w.Header())
+	if err!=nil{
+		json.NewEncoder(w).Encode(map[string]string{"error":"Didnt get any token from the header"})
+		w.WriteHeader(401)
+		return
+	}
+	err = cfg.DB.RevokeRefreshToken(r.Context(),token)
+	if err != nil{
+		json.NewEncoder(w).Encode(map[string]string{"error":"Didnt get any token from the database"})
+		w.WriteHeader(401)
+		return
+	}
+	w.WriteHeader(204)
+	
+}
+
 func main() {
 	// opening the db
 	godotenv.Load()
@@ -383,6 +400,7 @@ func main() {
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpById)
 	mux.HandleFunc("POST /api/login",apiCfg.handleLogin)
 	mux.HandleFunc("/api/refresh",apiCfg.handleRefreshToken)
+	mux.HandleFunc("POST /api/revoke",apiCfg.handleRevokeToken)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
