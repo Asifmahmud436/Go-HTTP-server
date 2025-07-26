@@ -37,7 +37,7 @@ func chirpValidater(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "Chirp is too long!"})
 		return
 	}
-	
+
 	w.WriteHeader(200)
 	params.Body = strings.ReplaceAll(params.Body, "kerfuffle", "****")
 	params.Body = strings.ReplaceAll(params.Body, "sharbet", "****")
@@ -49,7 +49,7 @@ func chirpValidater(w http.ResponseWriter, r *http.Request) {
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
-	Secret 			string
+	Secret         string
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -99,7 +99,7 @@ func (cfg *apiConfig) resetHits(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	type UserEmail struct {
-		Email    string `json:"email"`
+		Email          string `json:"email"`
 		HashedPassword string `json:"hashed_password"`
 	}
 	var params UserEmail
@@ -110,12 +110,12 @@ func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params.HashedPassword, err = auth.HashPassword(params.HashedPassword)
-	if err != nil{
-		log.Printf("Error in hashing Password: %s",err)
+	if err != nil {
+		log.Printf("Error in hashing Password: %s", err)
 		return
 	}
 	dbUser, err := cfg.DB.CreateUser(r.Context(), database.CreateUserParams{
-		Email: params.Email,
+		Email:          params.Email,
 		HashedPassword: params.HashedPassword,
 	})
 	if err != nil {
@@ -144,22 +144,21 @@ func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) postChiprs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-type", "application/json")
-	token,err := auth.GetBearerToken(r.Header)
-	if err!=nil{
-		log.Printf("Error in getting the jwt token: %s",err)
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("Error in getting the jwt token: %s", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	userId, err := auth.ValidateJWT(token,cfg.Secret)
-	if err!=nil{
-		log.Printf("The token is not valid: %s",err)
+	userId, err := auth.ValidateJWT(token, cfg.Secret)
+	if err != nil {
+		log.Printf("The token is not valid: %s", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	type Input struct {
-		Body   string    `json:"body"`
-		
+		Body string `json:"body"`
 	}
 	var params Input
 	err = json.NewDecoder(r.Body).Decode(&params)
@@ -269,7 +268,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Email    string `json:"email"`
 	}
-	
+
 	var params Login
 	err := json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
@@ -286,85 +285,121 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_,err = auth.CheckPassword(params.Password, dbUser.HashedPassword)
+	_, err = auth.CheckPassword(params.Password, dbUser.HashedPassword)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect email or password"})
 		return
 	}
 
-	token,err := auth.MakeJWT(dbUser.ID,cfg.Secret,time.Duration(3600)*time.Second)
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"could not generate new token"})
+	token, err := auth.MakeJWT(dbUser.ID, cfg.Secret, time.Duration(3600)*time.Second)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "could not generate new token"})
 		return
 	}
 
 	refreshToken, err := auth.MakeRefreshToken()
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"could not make a refresh token"})
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "could not make a refresh token"})
 		return
 	}
-	err = cfg.DB.CreateRefreshToken(r.Context(),database.CreateRefreshTokenParams{
-		Token: refreshToken,
-		UserID: dbUser.ID,
-		ExpiresAt: time.Now().Add(60*24*time.Hour),
+	err = cfg.DB.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:     refreshToken,
+		UserID:    dbUser.ID,
+		ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
 	})
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"couldnt save the refresh token"})
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "couldnt save the refresh token"})
 		return
 	}
 
 	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-		Token     string    `json:"token"`
-		Refresh_Token string `json:"refresh_token"`
+		ID            uuid.UUID `json:"id"`
+		CreatedAt     time.Time `json:"created_at"`
+		UpdatedAt     time.Time `json:"updated_at"`
+		Email         string    `json:"email"`
+		Token         string    `json:"token"`
+		Refresh_Token string    `json:"refresh_token"`
 	}
 	user := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
-		Token: token,
+		ID:            dbUser.ID,
+		CreatedAt:     dbUser.CreatedAt,
+		UpdatedAt:     dbUser.UpdatedAt,
+		Email:         dbUser.Email,
+		Token:         token,
 		Refresh_Token: refreshToken,
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
 }
 
-func (cfg *apiConfig) handleRefreshToken(w http.ResponseWriter,r *http.Request){
-	token,err := auth.GetBearerToken(w.Header())
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"Didnt get any token from the header"})
+func (cfg *apiConfig) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the header"})
 		w.WriteHeader(401)
 		return
 	}
-	resultToken,err := cfg.DB.GetRefreshToken(r.Context(),token)
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"Didnt get any token from the database"})
+	resultToken, err := cfg.DB.GetRefreshToken(r.Context(), token)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the database"})
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]database.RefreshToken{"token":resultToken})
+	json.NewEncoder(w).Encode(map[string]database.RefreshToken{"token": resultToken})
 	w.WriteHeader(200)
 }
 
-func (cfg *apiConfig) handleRevokeToken(w http.ResponseWriter, r *http.Request){
-	token, err := auth.GetBearerToken(w.Header())
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"Didnt get any token from the header"})
+func (cfg *apiConfig) handleRevokeToken(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the header"})
 		w.WriteHeader(401)
 		return
 	}
-	err = cfg.DB.RevokeRefreshToken(r.Context(),token)
-	if err != nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"Didnt get any token from the database"})
+	err = cfg.DB.RevokeRefreshToken(r.Context(), token)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the database"})
 		w.WriteHeader(401)
 		return
 	}
 	w.WriteHeader(204)
+
+}
+
+func (cfg *apiConfig) handleEditUser(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the header"})
+		w.WriteHeader(401)
+		return
+	}
+	err = cfg.DB.RevokeRefreshToken(r.Context(), token)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the database"})
+		w.WriteHeader(401)
+		return
+	}
+	type Login struct{
+		Password string `json:"password"`
+		Email string `json:"email"`
+	}
 	
+	var params Login
+	err = json.NewDecoder(r.Body).Decode(&params)
+	if err!=nil{
+		json.NewEncoder(w).Encode(map[string]string{"error":"login json structure issue"})
+	}
+
+	
+	newPass,err := auth.HashPassword(params.Password)
+	if err!=nil{
+		json.NewEncoder(w).Encode(map[string]string{"error":"error in hashing password"})
+	}
+	cfg.DB.UpdateUserPassword(r.Context(),database.UpdateUserPasswordParams{
+		Email: params.Email,
+		HashedPassword: newPass,
+	})
+	w.WriteHeader(200)
 }
 
 func main() {
@@ -383,9 +418,9 @@ func main() {
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
 		DB:             dbQueries,
-		Secret: os.Getenv("SECRET"),
+		Secret:         os.Getenv("SECRET"),
 	}
-	
+
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))))
 	mux.HandleFunc("GET /api/healthz", healthzHandler)
@@ -395,12 +430,13 @@ func main() {
 	mux.HandleFunc("/admin/reset", apiCfg.resetHits)
 	mux.HandleFunc("/api/validate_chirp", chirpValidater)
 	mux.HandleFunc("POST /api/users", apiCfg.handleUser)
+	mux.HandleFunc("PUT /api/users", apiCfg.handleEditUser)
 	mux.HandleFunc("POST /api/chirps", apiCfg.postChiprs)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpById)
-	mux.HandleFunc("POST /api/login",apiCfg.handleLogin)
-	mux.HandleFunc("/api/refresh",apiCfg.handleRefreshToken)
-	mux.HandleFunc("POST /api/revoke",apiCfg.handleRevokeToken)
+	mux.HandleFunc("POST /api/login", apiCfg.handleLogin)
+	mux.HandleFunc("/api/refresh", apiCfg.handleRefreshToken)
+	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
