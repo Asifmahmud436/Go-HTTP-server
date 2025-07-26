@@ -379,27 +379,55 @@ func (cfg *apiConfig) handleEditUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
-	type Login struct{
+	type Login struct {
 		Password string `json:"password"`
-		Email string `json:"email"`
-	}
-	
-	var params Login
-	err = json.NewDecoder(r.Body).Decode(&params)
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"login json structure issue"})
+		Email    string `json:"email"`
 	}
 
-	
-	newPass,err := auth.HashPassword(params.Password)
-	if err!=nil{
-		json.NewEncoder(w).Encode(map[string]string{"error":"error in hashing password"})
+	var params Login
+	err = json.NewDecoder(r.Body).Decode(&params)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "login json structure issue"})
 	}
-	cfg.DB.UpdateUserPassword(r.Context(),database.UpdateUserPasswordParams{
-		Email: params.Email,
+
+	newPass, err := auth.HashPassword(params.Password)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "error in hashing password"})
+	}
+	cfg.DB.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
+		Email:          params.Email,
 		HashedPassword: newPass,
 	})
 	w.WriteHeader(200)
+}
+
+func (cfg *apiConfig) deleteChirpById(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the header"})
+		w.WriteHeader(401)
+		return
+	}
+	err = cfg.DB.RevokeRefreshToken(r.Context(), token)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Didnt get any token from the database"})
+		w.WriteHeader(401)
+		return
+	}
+	id := r.PathValue("chirpID")
+	idStr,err := uuid.Parse(id)
+	if err!=nil{
+		json.NewEncoder(w).Encode(map[string]string{"error": "couldnt parse or find the id the path"})
+		w.WriteHeader(401)
+		return
+	}
+	err = cfg.DB.DeleteChirp(r.Context(),idStr)
+	if err!=nil{
+		json.NewEncoder(w).Encode(map[string]string{"error": "couldnt find the desired chip to delete"})
+		w.WriteHeader(404)
+		return
+	}
+	w.WriteHeader(204)
 }
 
 func main() {
@@ -434,6 +462,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", apiCfg.postChiprs)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpById)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirpById)
 	mux.HandleFunc("POST /api/login", apiCfg.handleLogin)
 	mux.HandleFunc("/api/refresh", apiCfg.handleRefreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
