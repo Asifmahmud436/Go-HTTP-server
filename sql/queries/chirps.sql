@@ -17,3 +17,7 @@ UPDATE users
 SET is_chirpy_red = TRUE,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
+
+-- name: GetChirpByUserID :one
+SELECT * FROM chirps
+WHERE user_id = $1;

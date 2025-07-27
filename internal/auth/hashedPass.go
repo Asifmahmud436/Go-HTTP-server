@@ -79,3 +79,12 @@ func MakeRefreshToken() (string,error){
 	resultTokenHex := hex.EncodeToString(tokenBytes)
 	return resultTokenHex,err
 }
+
+func GetPolkaKey(headers http.Header) (string, error){
+	polkaKey := headers.Get("Authorization")
+	if polkaKey==""{
+		return "",errors.New("empty header")
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(polkaKey,"PolkaKey "))
+	return token,nil
+}

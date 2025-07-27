@@ -50,6 +50,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
 	Secret         string
+	PolkaKey       string
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -331,7 +332,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Email:         dbUser.Email,
 		Token:         token,
 		Refresh_Token: refreshToken,
-		IsChirpyRed: dbUser.IsChirpyRed,
+		IsChirpyRed:   dbUser.IsChirpyRed,
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
@@ -435,7 +436,17 @@ func (cfg *apiConfig) deleteChirpById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlePolka(w http.ResponseWriter, r *http.Request) {
-
+	token, err := auth.GetPolkaKey(r.Header)
+	if err!=nil{
+		json.NewEncoder(w).Encode(map[string]string{"error": "error getting the token from the header"})
+		w.WriteHeader(404)
+		return
+	}
+	if token != os.Getenv("PolkaKey"){
+		json.NewEncoder(w).Encode(map[string]string{"error": "the token did not match"})
+		w.WriteHeader(401)
+		return
+	}
 	type WebhookData struct {
 		UserID string `json:"user_id"`
 	}
@@ -444,7 +455,7 @@ func (cfg *apiConfig) handlePolka(w http.ResponseWriter, r *http.Request) {
 		Data  WebhookData `json:"data"`
 	}
 	var params Webhook
-	err := json.NewDecoder(r.Body).Decode(&params)
+	err = json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]string{"error": "couldnt match the webhook structure"})
 		w.WriteHeader(404)
@@ -488,6 +499,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		DB:             dbQueries,
 		Secret:         os.Getenv("SECRET"),
+		PolkaKey:       os.Getenv("POLKA_KEY"),
 	}
 
 	mux := http.NewServeMux()
@@ -508,6 +520,7 @@ func main() {
 	mux.HandleFunc("/api/refresh", apiCfg.handleRefreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
 	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlePolka)
+	
 
 	srv := &http.Server{
 		Addr:    ":" + port,
