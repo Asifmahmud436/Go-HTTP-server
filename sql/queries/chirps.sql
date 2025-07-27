@@ -11,3 +11,9 @@ SELECT id, created_at, updated_at, body, user_id FROM chirps ORDER BY created_at
 
 -- name: DeleteChirp :exec
 DELETE FROM chirps WHERE id = $1;
+
+-- name: UpgradeUserToChirpyRed :exec
+UPDATE users
+SET is_chirpy_red = TRUE,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1;

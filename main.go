@@ -125,16 +125,18 @@ func (cfg *apiConfig) handleUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+		ID          uuid.UUID `json:"id"`
+		CreatedAt   time.Time `json:"created_at"`
+		UpdatedAt   time.Time `json:"updated_at"`
+		Email       string    `json:"email"`
+		IsChirpyRed bool      `json:"is_chirpy_red"`
 	}
 	user := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
+		ID:          dbUser.ID,
+		CreatedAt:   dbUser.CreatedAt,
+		UpdatedAt:   dbUser.UpdatedAt,
+		Email:       dbUser.Email,
+		IsChirpyRed: false,
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -320,6 +322,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Email         string    `json:"email"`
 		Token         string    `json:"token"`
 		Refresh_Token string    `json:"refresh_token"`
+		IsChirpyRed   bool      `json:"is_chirpy_red"`
 	}
 	user := User{
 		ID:            dbUser.ID,
@@ -328,6 +331,7 @@ func (cfg *apiConfig) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Email:         dbUser.Email,
 		Token:         token,
 		Refresh_Token: refreshToken,
+		IsChirpyRed: dbUser.IsChirpyRed,
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
@@ -415,15 +419,52 @@ func (cfg *apiConfig) deleteChirpById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("chirpID")
-	idStr,err := uuid.Parse(id)
-	if err!=nil{
+	idStr, err := uuid.Parse(id)
+	if err != nil {
 		json.NewEncoder(w).Encode(map[string]string{"error": "couldnt parse or find the id the path"})
 		w.WriteHeader(401)
 		return
 	}
-	err = cfg.DB.DeleteChirp(r.Context(),idStr)
-	if err!=nil{
+	err = cfg.DB.DeleteChirp(r.Context(), idStr)
+	if err != nil {
 		json.NewEncoder(w).Encode(map[string]string{"error": "couldnt find the desired chip to delete"})
+		w.WriteHeader(404)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (cfg *apiConfig) handlePolka(w http.ResponseWriter, r *http.Request) {
+
+	type WebhookData struct {
+		UserID string `json:"user_id"`
+	}
+	type Webhook struct {
+		Event string      `json:"event"`
+		Data  WebhookData `json:"data"`
+	}
+	var params Webhook
+	err := json.NewDecoder(r.Body).Decode(&params)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "couldnt match the webhook structure"})
+		w.WriteHeader(404)
+		return
+	}
+	if params.Event != "user.upgraded" {
+		json.NewEncoder(w).Encode(map[string]string{"error": "the event is not user.upgraded"})
+		w.WriteHeader(204)
+		return
+	}
+	id := params.Data.UserID
+	idStr, err := uuid.Parse(id)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "error parsing the id into UUID"})
+		w.WriteHeader(401)
+		return
+	}
+	err = cfg.DB.UpdateUserPolka(r.Context(), idStr)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "user not found"})
 		w.WriteHeader(404)
 		return
 	}
@@ -466,6 +507,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", apiCfg.handleLogin)
 	mux.HandleFunc("/api/refresh", apiCfg.handleRefreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlePolka)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
